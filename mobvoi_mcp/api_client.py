@@ -124,11 +124,15 @@ class ApiClient:
             timeout=20
         )
 
+        mainland_tts_host = "https://open.mobvoi.com"
         mainland_avatar_host = "https://openman.weta365.com/metaman/open"
 
         self.__service_dict = {
             "mainland": {
                 # naming: {group_name}.{service_name}
+                "tts.get_speaker_list": f"{mainland_tts_host}/api/tts/getSpeakerList",
+                "tts.text_to_speech": f"{mainland_tts_host}/api/tts/v1",
+                "tts.voice_clone": f"{mainland_tts_host}/clone",
                 "avatar.photo_drive_avatar": f"{mainland_avatar_host}/image/toman/cmp",
                 "avatar.query_photo_drive_avatar": f"{mainland_avatar_host}/image/toman/cmp/result/",
                 "avatar.video_dubbing": f"{mainland_avatar_host}/video/voiceover/createTask",
@@ -162,7 +166,7 @@ class ApiClient:
             signature_info = {}
         return signature_info
 
-    def post(self, service: str, request: dict = {}, headers: dict = {}, file: dict = {}, path: str = ""):
+    def post(self, service: str, request: dict = {}, headers: dict = {}, data: dict = {}, file: dict = {}, path: str = ""):
         post_header = self.__parse_signature()
         post_header.update(headers)
 
@@ -170,7 +174,7 @@ class ApiClient:
         if path:
             url = f"{url}/{path}"
 
-        response = self.__client.post(url, headers=post_header, json=request, files=file)
+        response = self.__client.post(url, headers=post_header, json=request, data=data, files=file)
         return response
 
     def get(self, service: str, request: dict = {}, headers: dict = {}, path: str = ""):

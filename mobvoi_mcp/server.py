@@ -2,29 +2,37 @@ import asyncio
 import logging
 import os
 import time
-import typing
-from collections import deque
+import hashlib
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 
 import mobvoi_mcp
-from api_client import ApiClient, download_file
-from utils import LanguageTable
+from mobvoi_mcp.utils import (
+    make_output_path,
+    make_output_file,
+    handle_input_file,
+    play,
+    speaker_list_filter
+)
+from mobvoi_mcp.api_client import ApiClient, download_file
+from mobvoi_mcp.utils import LanguageTable
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 logger.info(f"mobvoi-mcp version: {mobvoi_mcp.__version__}")
 
-
 load_dotenv()
 app_key = os.getenv("APP_KEY")
 app_secret = os.getenv("APP_SECRET")
 base_path = os.getenv("MOBVOI_MCP_BASE_PATH")
 region = os.getenv("MOBVOI_MCP_REGION")
-print("base_path", base_path)
+
+logger.info(f"region: {region}")
+logger.info(f"base_path: {base_path}")
+
 if not app_key:
     raise ValueError("APP_KEY environment variable is required")
 if not app_secret:
@@ -37,40 +45,47 @@ mcp = FastMCP("Mobvoi")
 api_client = ApiClient(app_key, app_secret, region)
 language_table = LanguageTable()
 
-class RateLimiter:
-    def __init__(self, rate_limit: int, time_window: float = 1.0):
-        self.rate_limit = rate_limit  # Maximum number of requests per second
-        self.time_window = time_window  # Time window (seconds)
-        self.requests = deque()  # Store the request timestamp
-        self._lock = asyncio.Lock()
+@mcp.tool(
+    description="""Obtain the list of speaker IDs from Mobvoi sound library and cloned by users themselves.
     
-    async def acquire(self):
-        async with self._lock:
-            now = time.time()
-            
-            # Remove the request records outside the time window.
-            while self.requests and now - self.requests[0] >= self.time_window:
-                self.requests.popleft()
-            
-            # If the current number of requests reaches the limit, wait until the earliest request expires.
-            if len(self.requests) >= self.rate_limit:
-                wait_time = self.requests[0] + self.time_window - now
-                if wait_time > 0:
-                    await asyncio.sleep(wait_time)
-                    return await self.acquire()
-            
-            # Add a new request timestamp
-            self.requests.append(now)
-    
-    async def __aenter__(self):
-        await self.acquire()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+    Args:
+        voice_type (str, optional): The type of voices to list. Values range ["all", "system", "voice_cloning"], with "all" being the default.
 
-# Create a rate limiter instance to limit the requests to 5 per second. 
-_RATE_LIMITER = RateLimiter(rate_limit=5)
+    Returns:
+        Text content with the list of speaker IDs(include mobvoi_sound_library, user_cloned).
+    """
+)
+def get_speaker_list(voice_type: str = "all"):
+    logger.info(f"get_speaker_list is called.")
+    timestamp = str(int(time.time()))
+    message = '+'.join([app_key, app_secret, timestamp])
+    m = hashlib.md5()
+    m.update(message.encode("utf8"))
+    signature = m.hexdigest()
+    request = {
+        "appkey": app_key,
+        "timestamp": timestamp,
+        "signature": signature
+    }
+    try:
+        res = api_client.post("tts.get_speaker_list", request)
+        systemVoice = res.json()['data']['systemVoice']
+        voiceCloning = res.json()['data']['voiceCloning']
+        galaxy_speakers = speaker_list_filter(systemVoice)
+        output_text = ""
+        if voice_type == "all":
+            output_text = f"Success. Get Speaker list success, systemVoice: {galaxy_speakers}, voiceCloning: {voiceCloning}"
+        elif voice_type == "system":
+            output_text = f"Success. Get Speaker list success, systemVoice: {galaxy_speakers}"
+        elif voice_type == "voice_cloning":
+            output_text = f"Success. Get Speaker list success, voiceCloning: {voiceCloning}"
+        return TextContent(
+            type="text",
+            text=f"Success. Get Speaker list success, {output_text}",
+        )
+    except Exception as e:
+        logger.exception(f"Error in get_speaker_list: {str(e)}")
+        return TextContent(type="text", text=f"Error: {str(e)}")
 
 @mcp.tool(
     description="""The text_to_speech service of Mobvoi. Convert text to speech with a given speaker and save the output audio file to a given directory.
@@ -104,9 +119,52 @@ def text_to_speech(
     volume: float = 1.0,
     pitch: float = 0.0,
     streaming: bool = False,
-    output_directory: typing.Optional[str] = None,
+    output_directory: str = "",
 ):
-    return TextContent(type="text", text="Not implemented yet.")
+    logger.info(f"text_to_speech is called.")
+    
+    if text == "":
+        return TextContent(type="text", text="Error: Text is required.")
+    
+    output_path = make_output_path(output_directory, base_path)
+    output_file_name = make_output_file("tts", speaker, output_path, "mp3")
+    
+    timestamp = str(int(time.time()))
+    message = '+'.join([app_key, app_secret, timestamp])
+    m = hashlib.md5()
+    m.update(message.encode("utf8"))
+    signature = m.hexdigest()
+    request = {
+        "appkey": app_key,
+        "timestamp": timestamp,
+        "signature": signature,
+        "text": text,
+        "speaker": speaker,
+        "audio_type": audio_type,
+        "speed": speed,
+        "rate": rate,
+        "volume": volume,
+        "pitch": pitch,
+        "streaming": streaming
+    }
+    try:
+        res = api_client.post("tts.text_to_speech", request)
+        content = res.content
+        if len(content) < 100:
+            logger.error(f"Invalid audio data length: {len(content)}")
+            raise Exception("Failed to get audio data from text to speech service")
+        else:
+            with open(output_path / output_file_name, "wb") as f:
+                f.write(content)
+                logger.info(f"Audio file written: {output_path / output_file_name}")
+            return TextContent(
+                type="text",
+                text=f"Success. File saved as: {output_path / output_file_name}. Speaker used: {speaker}",
+            )
+            
+    except Exception as e:
+        logger.exception(f"Error in text_to_speech: {str(e)}")
+        return TextContent(type="text", text=f"Error: {str(e)}")
 
 @mcp.tool(
     description="""The voice_clone service of Mobvoi. Clone a voice from a given url or local audio file. This tool will return a speaker id which can be used in text_to_speech tool.
@@ -119,11 +177,35 @@ def text_to_speech(
     """
 )
 def voice_clone(is_url: bool, audio_file: str):
-    return TextContent(type="text", text="Not implemented yet.")
+    logger.info(f"voice_clone is called.")
+    
+    timestamp = str(int(time.time()))
+    message = '+'.join([app_key, app_secret, timestamp])
+    m = hashlib.md5()
+    m.update(message.encode("utf8"))
+    signature = m.hexdigest()
+    request = {
+        "appkey": app_key,
+        "timestamp": timestamp,
+        "signature": signature,
+        "wavUri": audio_file if is_url else None
+    }
+    files = {
+        'file': open(audio_file, 'rb')
+    } if not is_url else None
+    logger.info(f"audio file length: {len(files['file'].read())}")
+    try:
+        res = api_client.post("tts.voice_clone", request={}, data=request, file=files)
+        return TextContent(type="text", text=f"Success. Speaker id: {res.json()['speaker']}")
+    except Exception as e:
+        logger.exception(f"Error in voice_clone: {str(e)}")
+        return TextContent(type="text", text=f"Error: {str(e)}")
 
 @mcp.tool(description="Play an audio file. Supports WAV and MP3 formats.")
 def play_audio(input_file_path: str) -> TextContent:
-    return TextContent(type="text", text="Not implemented yet.")
+    file_path = handle_input_file(input_file_path)
+    play(open(file_path, "rb").read(), use_ffmpeg=False)
+    return TextContent(type="text", text=f"Successfully played audio file: {file_path}")
 
 
 @mcp.tool(

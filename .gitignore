@@ -11,5 +11,6 @@ uv.lock
 .env
 publish.sh
 *.mp3
+*.wav
 *.DS_Store
 tests_bak/

@@ -1,10 +1,10 @@
 import os
-from datetime import datetime
+import shutil
+import subprocess
 from pathlib import Path
-from typing import Optional
-
 from fuzzywuzzy import fuzz
-
+from datetime import datetime
+from typing import Optional, Iterator, Union
 
 class MobvoiMcpError(Exception):
     pass
@@ -131,6 +131,116 @@ def handle_input_file(file_path: str, audio_content_check: bool = True) -> Path:
         make_error(f"File ({path}) is not an audio or video file")
     return path
 
+def is_installed(lib_name: str) -> bool:
+    lib = shutil.which(lib_name)
+    if lib is None:
+        return False
+    return True
+
+
+def play(
+    audio: Union[bytes, Iterator[bytes]], 
+    notebook: bool = False, 
+    use_ffmpeg: bool = True
+) -> None:
+    if isinstance(audio, Iterator):
+        audio = b"".join(audio)
+    if notebook:
+        try:
+            from IPython.display import Audio, display  # type: ignore
+        except ModuleNotFoundError:
+            message = (
+                "`pip install ipython` required when `notebook=False` "
+            )
+            raise ValueError(message)
+
+        display(Audio(audio, rate=44100, autoplay=True))
+    elif use_ffmpeg:
+        if not is_installed("ffplay"):
+            message = (
+                "ffplay from ffmpeg not found, necessary to play audio. "
+                "On mac you can install it with 'brew install ffmpeg'. "
+                "On linux and windows you can install it from https://ffmpeg.org/"
+            )
+            raise ValueError(message)
+        args = ["ffplay", "-autoexit", "-", "-nodisp"]
+        proc = subprocess.Popen(
+            args=args,
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        out, err = proc.communicate(input=audio)
+        proc.poll()
+    else:
+        try:
+            import io
+
+            import sounddevice as sd  # type: ignore
+            import soundfile as sf  # type: ignore
+        except ModuleNotFoundError:
+            message = (
+                "`pip install sounddevice soundfile` required when `use_ffmpeg=False` "
+            )
+            raise ValueError(message)
+        sd.play(*sf.read(io.BytesIO(audio)))
+        sd.wait()
+
+
+def save(audio: Union[bytes, Iterator[bytes]], filename: str) -> None:
+    if isinstance(audio, Iterator):
+        audio = b"".join(audio)
+    with open(filename, "wb") as f:
+        f.write(audio)
+
+
+def stream(audio_stream: Iterator[bytes]) -> bytes:
+    if not is_installed("mpv"):
+        message = (
+            "mpv not found, necessary to stream audio. "
+            "On mac you can install it with 'brew install mpv'. "
+            "On linux and windows you can install it from https://mpv.io/"
+        )
+        raise ValueError(message)
+
+    mpv_command = ["mpv", "--no-cache", "--no-terminal", "--", "fd://0"]
+    mpv_process = subprocess.Popen(
+        mpv_command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    audio = b""
+
+    for chunk in audio_stream:
+        if chunk is not None:
+            mpv_process.stdin.write(chunk)  # type: ignore
+            mpv_process.stdin.flush()  # type: ignore
+            audio += chunk
+    if mpv_process.stdin:
+        mpv_process.stdin.close()
+    mpv_process.wait()
+
+    return audio
+
+def speaker_list_filter(speaker_list: list[dict]) -> list[dict]:
+    galaxy_speakers = []
+    for speaker_data in speaker_list:
+        for speaker in speaker_data.get('speakers', []):
+            speaker_id = speaker.get('speaker48k', '')
+            if speaker_id and 'galaxy_fastv8' in speaker_id:
+                speaker_info = {
+                    'name': speaker.get('name', ''),
+                    'speakerID': speaker_id,
+                    'gender': speaker_data.get('gender', ''),
+                    'age': speaker_data.get('age', ''),
+                    'domain': speaker_data.get('domain', []),
+                    'language': speaker_data.get('language', []),
+                    'description': speaker_data.get('description', '')
+                }
+                galaxy_speakers.append(speaker_info)
+    return galaxy_speakers
 class Language:
     def __init__(self, code: str, name: str, is_src: bool, is_target: bool):
         self.code = code

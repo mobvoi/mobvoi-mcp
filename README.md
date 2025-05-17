@@ -1,4 +1,5 @@
-![Mobvoi Logo](https://raw.githubusercontent.com/mobvoi/mobvoi-mcp/master/.assets/logo.jpeg)
+![Mobvoi MCP Logo](https://raw.githubusercontent.com/mobvoi/mobvoi-mcp/master/.assets/logo.jpeg)
+
 <p align="center">
 <a href="https://pypi.org/project/mobvoi-mcp/"><img src="https://img.shields.io/badge/pypi-mobvoimcp-green" alt="version"></a>
 <a href="https://openapi.moyin.com/index/"><img src="https://img.shields.io/badge/openapi-SeqMonkey-orange" alt="version"></a>
@@ -8,22 +9,34 @@
 </p>
 
 <p align="center">
-  Official Mobvoi <a href="https://github.com/modelcontextprotocol">Model Context Protocol (MCP)</a> server that enables interaction with Mobvoi powerful Text to Speech, Voice Clone APIs. This server allows MCP clients like <a href="https://www.cursor.so">Cursor</a>, <a href="https://www.anthropic.com/claude">Claude Desktop</a>, <a href="https://cline.bot/">Cline</a> </a>, <a href="https://windsurf.com/editor">Windsurf</a> and other Client to generate speech, clone voices, and more. The mobvoi-tts-mcp server is built based on Python. Our PyPI package is published at Pypi, you can click on <a href="https://pypi.org/project/mobvoi-mcp/">Pypi</a> to view the latest version.
+  Official Mobvoi <a href="https://github.com/modelcontextprotocol">Model Context Protocol (MCP)</a> server that enables interaction with Mobvoi powerful Text to Speech, Voice Clone, Photo-Driven Avatar,  Video Dubbing, Video Translation APIs. This server allows MCP clients like <a href="https://www.cursor.so">Cursor</a>, <a href="https://www.anthropic.com/claude">Claude Desktop</a>, <a href="https://cline.bot/">Cline</a> </a>, <a href="https://windsurf.com/editor">Windsurf</a> and other Client to call tools to generate speech, clone voices, photo drive avatar, video dubbing, video translation and more. The mobvoi-mcp server is built based on Python, our PyPI package is published at Pypi, you can click on <a href="https://pypi.org/project/mobvoi-mcp/">Pypi</a> to view the latest version.
 </p>
 
 ## Prerequisite
 
 1. python 3.10+;
-2. Get your APP_KEY and APP_SECRET from [Mobvoi Sequence Monkey open platform](https://openapi.moyin.com/user/mine-app-detail). New users can claim a free quota.
-3. Install `uv` (Python package manager), install with `pip install uv` or see the `uv` [repo](https://github.com/astral-sh/uv) for additional install methods.
+2. Get your app_key and app_secret:
+   * For users in mainland China: you can get your APP_KEY and APP_SECRET from [Mobvoi Sequence Monkey open platform](https://openapi.moyin.com/user/mine-app-detail). New users can claim a free quota.
+   * For overseas users: we will launch it soon.
+3. Configure environment variables such as APP\_KEY, APP\_SECRET, MOBVOI\_MCP\_REGION, and MOBVOI\_MCP\_BASE\_PATH. I will provide example explanations later.
+   * MOBVOI\_MCP\_REGION："mainland" by default. Overseas users need to configure "global"(coming soon).
+   * MOBVOI\_MCP\_BASE\_PATH：The storage path for tool invocation results.
+4. Install `uv` (Python package manager), install with `pip install uv` or see the `uv` [repo](https://github.com/astral-sh/uv) for additional install methods.
 
 ## What can Mobvoi MCP do?
 
-Mobvoi MCP currently supports the following functions:
+Mobvoi MCP now provides the following tools for Clients to invoke.
 
-1. Voice Clone: Clone the voice according to the URL audio file link or the local audio file provided by you, and return the speaker ID. You can use this speaker ID to generate speech.
-2. Speech Synthesis: You can specify the speaker ID to generate speech from the specified text content. In addition, you can also adjust speech attributes such as speech speed and volume. For detailed information, please refer to the documentation of our [Mobvoi Sequence Monkey open platform TTS part](https://openapi.moyin.com/document?name=%E8%AF%AD%E9%9F%B3%E5%90%88%E6%88%90%EF%BC%88TTS%EF%BC%89).
-3. Voice broadcasting: Play the specified audio file.
+| tool                     | description                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| get_speaker_list         | List all voices available                                                                            |
+| text_to_speech           | Convert text to speech with a given speaker                                                          |
+| voice_clone              | Clone a voice from a given url or local audio file                                                   |
+| play_audio               | Play an local audio file                                                                             |
+| photo_drive_avatar       | Generate a video from a given image URL and an audio URL                                             |
+| query_photo_drive_avatar | Query the result of the photo drive avatar task                                                      |
+| video_dubbing            | Aims to perform the voice over task, which generates a video from a given video URL and an audio URL |
+| query_video_dubbing      | Query the result of the video dubbing task                                                           |
 
 ## Quickstart with Cursor
 
@@ -37,7 +50,8 @@ Go to Cursor -> Cursor Settings -> MCP, click `Add new global MCP server`, and m
         ],
         "env": {
           "APP_KEY": "<insert-your-APP_KEY-here>",
-          "APP_SECRET": "<insert-your-APP_SECRET-here>"
+          "APP_SECRET": "<insert-your-APP_SECRET-here>",
+          "MOBVOI_MCP_REGION": "<insert-your-region-here>"
         },
       },
 ```
@@ -54,7 +68,8 @@ Go to Claude Desktop -> Settings -> Developer, click `Edit Config` and open `cla
         ],
         "env": {
           "APP_KEY": "<insert-your-APP_KEY-here>",
-          "APP_SECRET": "<insert-your-APP_SECRET-here>"
+          "APP_SECRET": "<insert-your-APP_SECRET-here>",
+          "MOBVOI_MCP_REGION": "<insert-your-region-here>"
         },
       },
 ```
@@ -71,7 +86,8 @@ Install Cline extension on VSCode EXTENSIONS, and go to Cline -> MCP Servers -> 
         ],
         "env": {
           "APP_KEY": "<insert-your-APP_KEY-here>",
-          "APP_SECRET": "<insert-your-APP_SECRET-here>"
+          "APP_SECRET": "<insert-your-APP_SECRET-here>",
+          "MOBVOI_MCP_REGION": "<insert-your-region-here>"
         },
         "transportType": "stdio"
       },
@@ -96,7 +112,8 @@ If you want to conduct tests based on the source code or perform secondary devel
       ],
       "env": {
           "APP_KEY": "<insert-your-APP_KEY-here>",
-          "APP_SECRET": "<insert-your-APP_SECRET-here>"
+          "APP_SECRET": "<insert-your-APP_SECRET-here>",
+          "MOBVOI_MCP_REGION": "<insert-your-region-here>"
       },
       "transportType": "stdio"
     },
@@ -106,10 +123,8 @@ Take Cline as an example, and the configuration of other clients is similar.
 
 ## Example usage
 
-1. Try cloning a voice from your audio file(local or remote), enter the following content in the Cursor agent mode: "[https://tc-nj-backend-pub-cdn.mobvoi.com/subtitles/wav/9e5d439e0e9142966037fb80fe9e0d8e.wav](https://tc-nj-backend-pub-cdn.mobvoi.com/subtitles/wav/9e5d439e0e9142966037fb80fe9e0d8e.wav), clone this voice"
-2. Specify the speaker, synthesize speech from the text and play it aloud. Prompt the model like the following: "Use the sound cloned just now to broadcast: 'Welcome to experience Mobvoi TTS MCP."
-3. A demonstration video:
-   ![TTS Demo](https://raw.githubusercontent.com/mobvoi/mobvoi-mcp/master/.assets/Mobvoi_TTS_Demo.gif)
+1. TTS Demo video:
+    ![MCP TTS Demo](https://raw.githubusercontent.com/mobvoi/mobvoi-mcp/master/.assets/MCP-TTS-Demo.gif)
 
 ## Troubleshooting
 
